@@ -33,6 +33,15 @@ type SubmitResult = {
 const DIFFICULTY_LABEL: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' }
 const DIFFICULTY_COLOR: Record<string, string> = { easy: 'diff-easy', normal: 'diff-normal', hard: 'diff-hard' }
 
+function detectLanguage(code: string): string {
+  if (code.includes('public class') || code.includes('import java.')) return 'java'
+  return 'python'
+}
+
+function filenameForLanguage(lang: string): string {
+  return lang === 'java' ? 'Main.java' : 'app.py'
+}
+
 export default function ScenarioGame({
   scenarioId,
   streak,
@@ -180,12 +189,12 @@ export default function ScenarioGame({
       {/* 右ペイン: エディタ */}
       <div className="editor-pane">
         <div className="editor-header">
-          <span>login.py</span>
+          <span>{filenameForLanguage(detectLanguage(code))}</span>
           <span className="editor-hint-text">脆弱性を修正してください</span>
         </div>
         <Editor
           height="100%"
-          defaultLanguage="python"
+          language={detectLanguage(code)}
           value={code}
           onChange={v => setCode(v ?? '')}
           theme="vs-dark"

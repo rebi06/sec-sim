@@ -1,0 +1,127 @@
+id: idor-order-001
+title: "注文履歴閲覧API"
+category: "IDOR"
+difficulty: normal
+service_name: "CampusMall"
+description: |
+  CampusMall は学生向けECサービスです。
+  ユーザーは自分の注文履歴を確認できます。
+  AI は別ユーザーの注文番号を指定して、他人の注文情報を閲覧しようとしています。
+  対象は注文詳細取得APIです。
+
+vulnerable_code: |
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class OrderService {
+
+      private final Map<Long, String> orderOwners =
+              Map.of(
+                      101L, "user-a",
+                      102L, "user-b",
+                      103L, "user-a"
+              );
+
+      public Map<String, Object> getOrder(
+              String currentUser,
+              Long orderId) {
+
+          Map<String, Object> result =
+                  new HashMap<>();
+
+          result.put("orderId", orderId);
+          result.put("owner",
+                  orderOwners.get(orderId));
+
+          return result;
+      }
+  }
+
+fixed_code: |
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class OrderService {
+
+      private final Map<Long, String> orderOwners =
+              Map.of(
+                      101L, "user-a",
+                      102L, "user-b",
+                      103L, "user-a"
+              );
+
+      public Map<String, Object> getOrder(
+              String currentUser,
+              Long orderId) {
+
+          String owner =
+                  orderOwners.get(orderId);
+
+          if (owner == null) {
+              throw new RuntimeException(
+                      "Order not found");
+          }
+
+          if (!owner.equals(currentUser)) {
+              throw new SecurityException(
+                      "Access denied");
+          }
+
+          Map<String, Object> result =
+                  new HashMap<>();
+
+          result.put("orderId", orderId);
+          result.put("owner", owner);
+
+          return result;
+      }
+  }
+
+test_cases:
+  - id: tc-001
+    description: "所有者とログインユーザーを equals で照合していること"
+    type: code_contains
+    required: "owner.equals(currentUser)"
+    expect: pass
+  - id: tc-002
+    description: "権限違反時に SecurityException を投げていること"
+    type: code_contains
+    required: "SecurityException"
+    expect: pass
+  - id: tc-003
+    description: "注文が存在しない場合の null チェックがあること"
+    type: code_contains
+    required: "owner == null"
+    expect: pass
+  - id: tc-004
+    description: "owner.equals の否定で分岐していること"
+    type: code_contains
+    required: "!owner.equals(currentUser)"
+    expect: pass
+
+correct_concepts:
+  - "取得した注文の所有者とログインユーザーを照合している"
+  - "IDだけでアクセス可否を判断していない"
+  - "存在確認（not found）と認可確認（access denied）を別々に行っている"
+
+hint:
+  level1: "注文を取得した後の処理を確認してください。誰の注文かを見ていますか？"
+  level2: "取得できることと見せてよいことは別条件です。owner と currentUser を比べてください。"
+  level3: "owner == null で not found チェック、!owner.equals(currentUser) で SecurityException を投げます。"
+
+explanation: |
+  この脆弱性は「IDOR（Insecure Direct Object Reference）」です。
+
+  問題のコード:
+    result.put("orderId", orderId);
+    result.put("owner", orderOwners.get(orderId));
+    return result;  // ← 所有者確認なし
+
+  orderId=102 は user-b の注文ですが、user-a がリクエストしても返ってしまいます。
+  注文番号を推測・列挙できれば他人のデータを見放題になります。
+
+  修正方法:
+  1. owner == null → RuntimeException("Order not found")
+  2. !owner.equals(currentUser) → SecurityException("Access denied")
+
+  「注文が存在すること」と「そのユーザーに見せてよいこと」は別に確認する必要があります。

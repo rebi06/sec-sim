@@ -1,0 +1,134 @@
+id: xss-profile-001
+title: "プロフィール紹介文のプレビュー機能"
+category: "XSS"
+difficulty: easy
+service_name: "NovaConnect"
+description: |
+  NovaConnect は学生向けコミュニティサービスです。
+  ユーザーはプロフィール紹介文を登録できます。
+  AI は紹介文入力欄を利用して、プロフィール画面の表示内容を改変しようとしています。
+  対象はプロフィール表示機能のみです。
+
+vulnerable_code: |
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class ProfileController {
+
+      public String renderProfile(String username, String bio) {
+
+          String html =
+                  "<html>" +
+                  "<body>" +
+                  "<h2>" + username + "</h2>" +
+                  "<div>" + bio + "</div>" +
+                  "</body>" +
+                  "</html>";
+
+          return html;
+      }
+
+      public Map<String, String> saveProfile(
+              String username,
+              String bio) {
+
+          Map<String, String> result = new HashMap<>();
+
+          result.put("username", username);
+          result.put("bio", bio);
+
+          return result;
+      }
+  }
+
+fixed_code: |
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class ProfileController {
+
+      private String escapeHtml(String value) {
+          return value
+                  .replace("&", "&amp;")
+                  .replace("<", "&lt;")
+                  .replace(">", "&gt;")
+                  .replace("\"", "&quot;")
+                  .replace("'", "&#39;");
+      }
+
+      public String renderProfile(String username, String bio) {
+
+          String safeUsername = escapeHtml(username);
+          String safeBio = escapeHtml(bio);
+
+          String html =
+                  "<html>" +
+                  "<body>" +
+                  "<h2>" + safeUsername + "</h2>" +
+                  "<div>" + safeBio + "</div>" +
+                  "</body>" +
+                  "</html>";
+
+          return html;
+      }
+
+      public Map<String, String> saveProfile(
+              String username,
+              String bio) {
+
+          Map<String, String> result = new HashMap<>();
+
+          result.put("username", username);
+          result.put("bio", bio);
+
+          return result;
+      }
+  }
+
+test_cases:
+  - id: tc-001
+    description: "escapeHtml メソッドが定義されていること"
+    type: code_contains
+    required: "escapeHtml"
+    expect: pass
+  - id: tc-002
+    description: "username をそのまま HTML に結合していないこと"
+    type: code_not_contains
+    forbidden: "\"<h2>\" + username + \"</h2>\""
+    expect: blocked
+  - id: tc-003
+    description: "bio をそのまま HTML に結合していないこと"
+    type: code_not_contains
+    forbidden: "\"<div>\" + bio + \"</div>\""
+    expect: blocked
+  - id: tc-004
+    description: "エスケープした変数を HTML に使っていること"
+    type: code_contains
+    required: "safeUsername"
+    expect: pass
+
+correct_concepts:
+  - "HTMLエスケープメソッドを用意して使っている"
+  - "ユーザー入力を直接HTMLへ結合していない"
+  - "表示時に無害化している"
+
+hint:
+  level1: "username と bio がそのまま HTML 文字列に入っている箇所を探してください。"
+  level2: "HTML の特殊文字（< > & \" '）を無害な文字参照に変換する必要があります。"
+  level3: "escapeHtml メソッドを作り、< を &lt; などに置換して、renderProfile 内で safeUsername / safeBio として使います。"
+
+explanation: |
+  この脆弱性は、ユーザー入力をそのままHTML文字列へ結合していることが原因です。
+
+  問題のコード:
+    "<h2>" + username + "</h2>"
+    "<div>" + bio + "</div>"
+
+  username や bio に "<script>alert(1)</script>" を入れると、
+  レンダリング時に HTML の構造が変わってしまいます。
+
+  修正方法:
+    escapeHtml メソッドで < → &lt; / > → &gt; / & → &amp; などに変換し、
+    safeUsername / safeBio として出力する。
+
+  こうすることで入力は HTML 命令ではなく文字列として表示されます。
