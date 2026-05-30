@@ -146,7 +146,7 @@ class GameService:
 
     def _serialize_game(self, game: GameSessionModel) -> dict:
         return {
-            'id': game.id,
+            'id': str(game.id),
             'status': game.status,
             'ruleset_version': game.ruleset_version,
             'turn_number': game.turn_number,
@@ -162,7 +162,7 @@ class GameService:
 
     def _serialize_event(self, event: GameEventModel) -> dict:
         return {
-            'id': event.id,
+            'id': str(event.id),
             'seq': event.seq,
             'event_type': event.event_type,
             'actor': event.actor,
