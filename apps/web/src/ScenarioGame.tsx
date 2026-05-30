@@ -1,5 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useState } from 'react'
+import type { GameMode } from './types'
 
 type Hint = { level1: string; level2: string; level3: string }
 
@@ -29,19 +30,20 @@ type SubmitResult = {
   explanation: string | null
 }
 
-const DIFFICULTY_LABEL: Record<string, string> = {
-  easy: 'Easy',
-  normal: 'Normal',
-  hard: 'Hard',
-}
+const DIFFICULTY_LABEL: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' }
+const DIFFICULTY_COLOR: Record<string, string> = { easy: 'diff-easy', normal: 'diff-normal', hard: 'diff-hard' }
 
-const DIFFICULTY_COLOR: Record<string, string> = {
-  easy: 'diff-easy',
-  normal: 'diff-normal',
-  hard: 'diff-hard',
-}
-
-export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
+export default function ScenarioGame({
+  scenarioId,
+  streak,
+  onNavigate,
+  onClear,
+}: {
+  scenarioId: string
+  streak?: number
+  onNavigate: (mode: GameMode) => void
+  onClear?: () => void
+}) {
   const [scenario, setScenario] = useState<Scenario | null>(null)
   const [code, setCode] = useState('')
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null)
@@ -50,13 +52,15 @@ export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setScenario(null)
+    setSubmitResult(null)
+    setHintLevel(0)
+    setError(null)
     fetch(`/api/scenarios/${scenarioId}`)
       .then(r => r.json())
       .then((s: Scenario) => {
         setScenario(s)
         setCode(s.vulnerable_code)
-        setSubmitResult(null)
-        setHintLevel(0)
       })
       .catch(() => setError('シナリオの読み込みに失敗しました'))
   }, [scenarioId])
@@ -71,7 +75,9 @@ export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, hint_used: hintLevel }),
       })
-      setSubmitResult(await res.json())
+      const result: SubmitResult = await res.json()
+      setSubmitResult(result)
+      if (result.passed) onClear?.()
     } catch {
       setError('提出に失敗しました')
     } finally {
@@ -86,10 +92,6 @@ export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
     setHintLevel(0)
   }
 
-  function showHint() {
-    setHintLevel(h => Math.min(h + 1, 3))
-  }
-
   const currentHint = scenario
     ? hintLevel === 1 ? scenario.hint.level1
     : hintLevel === 2 ? scenario.hint.level2
@@ -101,8 +103,15 @@ export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
 
   return (
     <div className="scenario-layout">
-      {/* 左ペイン: 情報 */}
+      {/* 左ペイン */}
       <div className="scenario-info">
+        <div className="scenario-nav">
+          <button className="back-btn" onClick={() => onNavigate({ type: 'lobby' })}>← ロビー</button>
+          {streak !== undefined && streak > 0 && (
+            <span className="streak-badge">🔥 {streak} 連続クリア</span>
+          )}
+        </div>
+
         <div className="scenario-meta">
           <span className={`difficulty-badge ${DIFFICULTY_COLOR[scenario.difficulty]}`}>
             {DIFFICULTY_LABEL[scenario.difficulty]}
@@ -119,7 +128,7 @@ export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
           </button>
           <button onClick={handleReset} className="secondary reset-btn">リセット</button>
           {hintLevel < 3 && !submitResult?.passed && (
-            <button onClick={showHint} className="hint-btn">
+            <button onClick={() => setHintLevel(h => Math.min(h + 1, 3))} className="hint-btn">
               ヒント {hintLevel > 0 ? `(${hintLevel}/3)` : ''}
             </button>
           )}
@@ -152,6 +161,12 @@ export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
               ))}
             </div>
 
+            {submitResult.passed && onClear && (
+              <button className="next-btn" onClick={onClear}>
+                次の問題へ →
+              </button>
+            )}
+
             {submitResult.explanation && (
               <div className="explanation">
                 <h4>解説</h4>
@@ -162,7 +177,7 @@ export default function ScenarioGame({ scenarioId }: { scenarioId: string }) {
         )}
       </div>
 
-      {/* 右ペイン: コードエディタ */}
+      {/* 右ペイン: エディタ */}
       <div className="editor-pane">
         <div className="editor-header">
           <span>login.py</span>
