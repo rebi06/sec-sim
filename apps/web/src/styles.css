@@ -73,6 +73,42 @@ h2 { font-size: 15px; color: #94a3b8; text-transform: uppercase; letter-spacing:
 .log-time { margin-left: auto; color: #475569; }
 .log-payload { margin: 0; white-space: pre-wrap; word-break: break-word; color: #94a3b8; font-size: 11px; line-height: 1.5; }
 
+/* attack preview */
+.attack-pane { overflow-y: auto; background: rgba(17,24,39,.7); border: 1px solid rgba(148,163,184,.15); border-radius: 14px; padding: 16px; }
+.attack-preview { display: flex; flex-direction: column; gap: 12px; }
+.ap-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ap-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; }
+.ap-desc { margin: 0; font-size: 12px; color: #64748b; }
+.ap-btn { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.4); color: #f87171; border-radius: 10px; padding: 10px 16px; font-size: 13px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.ap-btn:hover:not(:disabled) { background: rgba(239,68,68,.35); }
+.ap-btn:disabled { opacity: .4; }
+.ap-error { font-size: 12px; color: #fca5a5; background: rgba(239,68,68,.1); border-radius: 8px; padding: 8px 12px; }
+.ap-loading { display: flex; align-items: center; gap: 4px; }
+.dots::after { content: ''; animation: dots 1.2s steps(4,end) infinite; }
+@keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
+.ap-scanning { text-align: center; padding: 20px; color: #64748b; font-size: 13px; }
+.scan-line { height: 2px; background: linear-gradient(90deg, transparent, #ef4444, transparent); animation: scan 1.2s ease-in-out infinite; border-radius: 99px; margin-bottom: 12px; }
+@keyframes scan { 0%,100%{opacity:.2} 50%{opacity:1} }
+.ap-summary { display: flex; gap: 10px; align-items: center; border-radius: 12px; padding: 12px 14px; font-size: 13px; font-weight: 600; }
+.summary-safe { background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.3); color: #4ade80; }
+.summary-danger { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: #f87171; }
+.ap-attacks { display: flex; flex-direction: column; gap: 8px; }
+.ap-attack { border-radius: 12px; padding: 10px 14px; animation: fadeIn .3s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.attack-blocked { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.2); }
+.attack-breached { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); }
+.attack-pending { display: flex; gap: 6px; align-items: center; padding: 14px; background: rgba(148,163,184,.06); border-radius: 12px; border: 1px solid rgba(148,163,184,.1); }
+.pending-dot { width: 6px; height: 6px; border-radius: 50%; background: #475569; animation: pulse 1s ease-in-out infinite; }
+.pending-dot:nth-child(2) { animation-delay: .2s; }
+.pending-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+.attack-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.attack-icon { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.attack-blocked .attack-icon { color: #4ade80; }
+.attack-breached .attack-icon { color: #f87171; }
+.attack-payload { font-size: 12px; background: rgba(148,163,184,.1); border-radius: 6px; padding: 2px 8px; color: #e2e8f0; word-break: break-all; }
+.attack-reason { margin: 0; font-size: 11px; color: #64748b; line-height: 1.5; }
+
 /* overlay */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 100; cursor: pointer; backdrop-filter: blur(4px); }
 .overlay-box { background: #111827; border: 1px solid rgba(148,163,184,.25); border-radius: 24px; padding: 48px 56px; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.5); }
@@ -147,7 +183,7 @@ h2 { font-size: 15px; color: #94a3b8; text-transform: uppercase; letter-spacing:
 /* scenario game */
 .app-scenario { max-width: 100%; padding: 16px 24px; display: flex; flex-direction: column; height: 100vh; }
 .app-scenario .header { margin-bottom: 12px; flex-shrink: 0; }
-.scenario-layout { display: grid; grid-template-columns: 380px 1fr; gap: 16px; flex: 1; min-height: 0; }
+.scenario-layout { display: grid; grid-template-columns: 340px 1fr 360px; gap: 16px; flex: 1; min-height: 0; }
 .scenario-info { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
 .scenario-loading { padding: 40px; text-align: center; color: #64748b; }
 .scenario-meta { display: flex; gap: 8px; align-items: center; }

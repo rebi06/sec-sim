@@ -1,5 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useState } from 'react'
+import AttackPreview from './AttackPreview'
 import type { GameMode } from './types'
 
 type Hint = { level1: string; level2: string; level3: string }
@@ -186,7 +187,7 @@ export default function ScenarioGame({
         )}
       </div>
 
-      {/* 右ペイン: エディタ */}
+      {/* 中央ペイン: エディタ */}
       <div className="editor-pane">
         <div className="editor-header">
           <span>{filenameForLanguage(detectLanguage(code))}</span>
@@ -206,6 +207,15 @@ export default function ScenarioGame({
             lineNumbers: 'on',
             readOnly: submitResult?.passed ?? false,
           }}
+        />
+      </div>
+
+      {/* 右ペイン: 攻撃プレビュー */}
+      <div className="attack-pane">
+        <AttackPreview
+          scenarioId={scenarioId}
+          code={code}
+          disabled={busy}
         />
       </div>
     </div>

@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
+from app.domain.attack_simulator import simulate_attacks
 from app.domain.judge import judge
 from app.infrastructure.scenario_loader import load_all, load_by_id
 
@@ -33,6 +34,22 @@ class ScenarioDetail(BaseModel):
     description: str
     vulnerable_code: str
     hint: HintResponse
+
+
+class SimulateRequest(BaseModel):
+    code: str
+
+
+class AttackResultResponse(BaseModel):
+    payload: str
+    blocked: bool
+    reason: str
+
+
+class SimulateResponse(BaseModel):
+    attacks: List[AttackResultResponse]
+    all_blocked: bool
+    summary: str
 
 
 class SubmitRequest(BaseModel):
@@ -87,6 +104,22 @@ def get_scenario(scenario_id: str):
             level2=scenario.hint.level2,
             level3=scenario.hint.level3,
         ),
+    )
+
+
+@router.post("/{scenario_id}/simulate", response_model=SimulateResponse)
+def simulate(scenario_id: str, payload: SimulateRequest):
+    scenario = load_by_id(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="scenario not found")
+    result = simulate_attacks(payload.code, scenario)
+    return SimulateResponse(
+        attacks=[
+            AttackResultResponse(payload=a.payload, blocked=a.blocked, reason=a.reason)
+            for a in result.attacks
+        ],
+        all_blocked=result.all_blocked,
+        summary=result.summary,
     )
 
 
