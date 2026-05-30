@@ -1,0 +1,160 @@
+id: trav-download-001
+title: "添付レポートの取得先がずれてしまう"
+category: "Path Traversal"
+difficulty: normal
+service_name: "ForgeFiles"
+description: |
+  ForgeFiles は社内レポートを配布するダウンロード機能を持つサービスです。
+  プレイヤーは、ユーザーが指定したファイル名から安全に文書を返す処理を守ります。
+  AI は、本来の保存場所以外にあるファイルを参照させようとしています。
+  対象はファイルダウンロード機能だけです。
+
+vulnerable_code: |
+  import os
+  from dataclasses import dataclass
+  from typing import Dict
+
+  @dataclass
+  class DownloadResult:
+      name: str
+      content: str
+
+  class ForgeFiles:
+      def __init__(self):
+          self.root_dir = "/srv/forgefiles/data"
+          self.store = {
+              "report_q1.txt": "Quarter 1 summary",
+              "report_q2.txt": "Quarter 2 summary",
+              "handbook.txt": "Team handbook",
+          }
+
+      def _read_virtual_file(self, path: str) -> str:
+          with open(path, "r", encoding="utf-8") as f:
+              return f.read()
+
+      def download(self, file_name: str) -> Dict[str, str]:
+          full_path = os.path.join(self.root_dir, file_name)
+          content = self._read_virtual_file(full_path)
+          return {
+              "file": file_name,
+              "content": content,
+          }
+
+      def preview(self, file_name: str) -> Dict[str, str]:
+          if file_name in self.store:
+              return {
+                  "file": file_name,
+                  "content": self.store[file_name],
+              }
+          return self.download(file_name)
+
+  def fetch_document(name: str) -> Dict[str, str]:
+      app = ForgeFiles()
+      return app.preview(name)
+
+  if __name__ == "__main__":
+      print(fetch_document("report_q1.txt"))
+
+fixed_code: |
+  import os
+  from dataclasses import dataclass
+  from typing import Dict
+
+  @dataclass
+  class DownloadResult:
+      name: str
+      content: str
+
+  class ForgeFiles:
+      def __init__(self):
+          self.root_dir = "/srv/forgefiles/data"
+          self.store = {
+              "report_q1.txt": "Quarter 1 summary",
+              "report_q2.txt": "Quarter 2 summary",
+              "handbook.txt": "Team handbook",
+          }
+
+      def _read_virtual_file(self, path: str) -> str:
+          with open(path, "r", encoding="utf-8") as f:
+              return f.read()
+
+      def _safe_resolve(self, file_name: str) -> str:
+          base = os.path.abspath(self.root_dir)
+          candidate = os.path.abspath(os.path.join(base, file_name))
+          if not candidate.startswith(base + os.sep):
+              raise ValueError("invalid file path")
+          return candidate
+
+      def download(self, file_name: str) -> Dict[str, str]:
+          if file_name not in self.store:
+              raise ValueError("unknown file")
+          full_path = self._safe_resolve(file_name)
+          content = self._read_virtual_file(full_path)
+          return {
+              "file": file_name,
+              "content": content,
+          }
+
+      def preview(self, file_name: str) -> Dict[str, str]:
+          if file_name in self.store:
+              return {
+                  "file": file_name,
+                  "content": self.store[file_name],
+              }
+          return self.download(file_name)
+
+  def fetch_document(name: str) -> Dict[str, str]:
+      app = ForgeFiles()
+      return app.preview(name)
+
+  if __name__ == "__main__":
+      print(fetch_document("report_q1.txt"))
+
+test_cases:
+  - id: tc-001
+    description: "絶対パス化（os.path.abspath）で正規化していること"
+    type: code_contains
+    required: "os.path.abspath"
+    expect: pass
+  - id: tc-002
+    description: "root_dir の外に出ていないか検証していること"
+    type: code_contains
+    required: "startswith"
+    expect: pass
+  - id: tc-003
+    description: "許可リスト外のファイルは拒否していること"
+    type: code_contains
+    required: "not in self.store"
+    expect: pass
+  - id: tc-004
+    description: "パス検証を専用メソッド（_safe_resolve）に分離していること"
+    type: code_contains
+    required: "_safe_resolve"
+    expect: pass
+
+correct_concepts:
+  - "許可済みファイル名だけを受け付けている"
+  - "絶対パス化した後に保存領域の外へ出ていないか確認している"
+  - "未知のファイルは処理しない"
+
+hint:
+  level1: "結合されたパスが保存領域の外に出ていないかを確認してください。"
+  level2: "許可リストのチェックと、正規化後のパス検証の両方が必要です。"
+  level3: "_safe_resolve メソッドを作り、os.path.abspath で解決後に root_dir + os.sep で startswith チェックします。"
+
+explanation: |
+  この脆弱性は、入力されたファイル名をそのままパス結合していることが原因です。
+
+  問題のコード:
+    full_path = os.path.join(self.root_dir, file_name)
+
+  file_name に "../shared/notes.txt" が入ると、
+  /srv/forgefiles/data/../shared/notes.txt → /srv/forgefiles/shared/notes.txt
+  のように保存領域の外のファイルが参照できてしまいます。
+
+  修正方法:
+  1. store の許可リストにないファイルは即拒否
+  2. os.path.abspath で正規化したパスが root_dir 配下か startswith で確認
+  3. 範囲外なら ValueError を投げる
+
+  これにより参照先をサービスの管理範囲に閉じ込められます。

@@ -1,0 +1,174 @@
+id: sqli-search-001
+title: "検索キーワードで内部記事が全部見えてしまう"
+category: "SQL Injection"
+difficulty: normal
+service_name: "NimbusBoard"
+description: |
+  NimbusBoard は社内向けのナレッジ検索サービスです。
+  プレイヤーは、検索ボックスに入る文字列をもとに記事を絞り込む機能を守ります。
+  AI は検索条件をすり抜けて、本来は見えてはいけない内部メモを引き出そうとしています。
+  対象は検索機能のみです。
+
+vulnerable_code: |
+  import sqlite3
+  from dataclasses import dataclass
+  from typing import List, Dict
+
+  @dataclass
+  class Note:
+      note_id: int
+      title: str
+      body: str
+      is_private: int
+
+  class NimbusBoard:
+      def __init__(self):
+          self.conn = sqlite3.connect(":memory:")
+          self.conn.row_factory = sqlite3.Row
+          self._setup()
+
+      def _setup(self):
+          cur = self.conn.cursor()
+          cur.execute("CREATE TABLE notes (note_id INTEGER, title TEXT, body TEXT, is_private INTEGER)")
+          rows = [
+              (1, "Welcome", "Public onboarding guide", 0),
+              (2, "Ops Memo", "Nightly maintenance window", 1),
+              (3, "FAQ", "Reset steps and support links", 0),
+              (4, "Audit Log", "Internal review checklist", 1),
+          ]
+          cur.executemany("INSERT INTO notes VALUES (?, ?, ?, ?)", rows)
+          self.conn.commit()
+
+      def search_notes(self, keyword: str) -> List[Dict]:
+          query = f"SELECT note_id, title, body FROM notes WHERE is_private = 0 AND title LIKE '%{keyword}%'"
+          cur = self.conn.cursor()
+          result = cur.execute(query).fetchall()
+          return [dict(row) for row in result]
+
+      def get_public_titles(self) -> List[str]:
+          return [row["title"] for row in self.conn.execute("SELECT title FROM notes WHERE is_private = 0")]
+
+      def preview(self, keyword: str) -> Dict:
+          items = self.search_notes(keyword)
+          return {
+              "count": len(items),
+              "items": items,
+              "public_titles": self.get_public_titles(),
+          }
+
+  def run_search(term: str) -> Dict:
+      app = NimbusBoard()
+      return app.preview(term)
+
+  if __name__ == "__main__":
+      print(run_search("guide"))
+
+fixed_code: |
+  import sqlite3
+  from dataclasses import dataclass
+  from typing import List, Dict
+
+  @dataclass
+  class Note:
+      note_id: int
+      title: str
+      body: str
+      is_private: int
+
+  class NimbusBoard:
+      def __init__(self):
+          self.conn = sqlite3.connect(":memory:")
+          self.conn.row_factory = sqlite3.Row
+          self._setup()
+
+      def _setup(self):
+          cur = self.conn.cursor()
+          cur.execute("CREATE TABLE notes (note_id INTEGER, title TEXT, body TEXT, is_private INTEGER)")
+          rows = [
+              (1, "Welcome", "Public onboarding guide", 0),
+              (2, "Ops Memo", "Nightly maintenance window", 1),
+              (3, "FAQ", "Reset steps and support links", 0),
+              (4, "Audit Log", "Internal review checklist", 1),
+          ]
+          cur.executemany("INSERT INTO notes VALUES (?, ?, ?, ?)", rows)
+          self.conn.commit()
+
+      def _escape_like(self, text: str) -> str:
+          return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+      def search_notes(self, keyword: str) -> List[Dict]:
+          safe_keyword = self._escape_like(keyword)
+          sql = (
+              "SELECT note_id, title, body "
+              "FROM notes "
+              "WHERE is_private = 0 AND title LIKE ? ESCAPE '\\'"
+          )
+          cur = self.conn.cursor()
+          result = cur.execute(sql, (f"%{safe_keyword}%",)).fetchall()
+          return [dict(row) for row in result]
+
+      def get_public_titles(self) -> List[str]:
+          return [row["title"] for row in self.conn.execute("SELECT title FROM notes WHERE is_private = 0")]
+
+      def preview(self, keyword: str) -> Dict:
+          items = self.search_notes(keyword)
+          return {
+              "count": len(items),
+              "items": items,
+              "public_titles": self.get_public_titles(),
+          }
+
+  def run_search(term: str) -> Dict:
+      app = NimbusBoard()
+      return app.preview(term)
+
+  if __name__ == "__main__":
+      print(run_search("guide"))
+
+test_cases:
+  - id: tc-001
+    description: "f文字列でSQLを組み立てていないこと"
+    type: code_not_contains
+    forbidden: "f\"SELECT"
+    expect: blocked
+  - id: tc-002
+    description: "プレースホルダー（?）を使っていること"
+    type: code_contains
+    required: "LIKE ?"
+    expect: pass
+  - id: tc-003
+    description: "LIKE用ワイルドカードをエスケープしていること"
+    type: code_contains
+    required: "ESCAPE"
+    expect: pass
+  - id: tc-004
+    description: "execute()にパラメータを渡していること"
+    type: code_contains
+    required: "execute(sql,"
+    expect: pass
+
+correct_concepts:
+  - "SQL文を文字列連結（f文字列）で組み立てない"
+  - "プレースホルダ付きのパラメータ化クエリを使う"
+  - "LIKE検索ではワイルドカードをエスケープして意図しない拡張を防ぐ"
+
+hint:
+  level1: "検索語がSQL文の途中にそのまま入っている箇所を探してください。"
+  level2: "f文字列をやめて、プレースホルダー（?）に置き換えましょう。"
+  level3: "LIKE ? ESCAPE '\\' の形にして、キーワード中の % と _ も _escape_like でエスケープします。"
+
+explanation: |
+  この脆弱性は、検索キーワードをSQL文へ直接埋め込んでいることが原因です。
+
+  問題のコード:
+    query = f"SELECT ... WHERE ... title LIKE '%{keyword}%'"
+
+  keyword に「' OR '1'='1」を入力すると条件が常に真になり、
+  is_private=1 の内部メモまで返ってしまいます。
+
+  修正方法:
+  1. f文字列をやめてプレースホルダー（?）を使う
+  2. execute() の第2引数に値を渡す
+  3. LIKE 用に % と _ をエスケープする（_escape_like メソッド）
+
+  これにより入力は値として扱われ、SQL命令として解釈されません。

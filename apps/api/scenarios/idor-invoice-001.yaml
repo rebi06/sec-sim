@@ -1,0 +1,177 @@
+id: idor-invoice-001
+title: "請求書の閲覧権限がすり抜ける"
+category: "IDOR"
+difficulty: normal
+service_name: "KiteLedger"
+description: |
+  KiteLedger は学内サークル向けの請求書管理サービスです。
+  プレイヤーは、ログイン中の利用者が自分の請求書だけを見られるように守ります。
+  AI は、別の利用者の請求書IDを指定して閲覧しようとしています。
+  対象は請求書閲覧機能だけです。
+
+vulnerable_code: |
+  import sqlite3
+  from dataclasses import dataclass
+  from typing import Dict
+
+  @dataclass
+  class Invoice:
+      invoice_id: int
+      owner_id: str
+      amount: int
+      status: str
+
+  class KiteLedger:
+      def __init__(self):
+          self.conn = sqlite3.connect(":memory:")
+          self.conn.row_factory = sqlite3.Row
+          self._setup()
+
+      def _setup(self):
+          cur = self.conn.cursor()
+          cur.execute(
+              "CREATE TABLE invoices (invoice_id INTEGER, owner_id TEXT, amount INTEGER, status TEXT)"
+          )
+          rows = [
+              (101, "u-100", 1200, "paid"),
+              (102, "u-200", 4300, "open"),
+              (103, "u-100", 800, "open"),
+          ]
+          cur.executemany("INSERT INTO invoices VALUES (?, ?, ?, ?)", rows)
+          self.conn.commit()
+
+      def get_invoice(self, current_user_id: str, invoice_id: int) -> Dict:
+          row = self.conn.execute(
+              "SELECT invoice_id, owner_id, amount, status FROM invoices WHERE invoice_id = ?",
+              (invoice_id,),
+          ).fetchone()
+          if row is None:
+              raise ValueError("not found")
+          return {
+              "viewer": current_user_id,
+              "invoice_id": row["invoice_id"],
+              "owner_id": row["owner_id"],
+              "amount": row["amount"],
+              "status": row["status"],
+          }
+
+      def summarize(self, current_user_id: str, invoice_id: int) -> Dict:
+          invoice = self.get_invoice(current_user_id, invoice_id)
+          return {
+              "requester": current_user_id,
+              "invoice": invoice,
+          }
+
+  def view_invoice(user_id: str, invoice_id: int) -> Dict:
+      app = KiteLedger()
+      return app.summarize(user_id, invoice_id)
+
+  if __name__ == "__main__":
+      print(view_invoice("u-100", 101))
+
+fixed_code: |
+  import sqlite3
+  from dataclasses import dataclass
+  from typing import Dict
+
+  @dataclass
+  class Invoice:
+      invoice_id: int
+      owner_id: str
+      amount: int
+      status: str
+
+  class KiteLedger:
+      def __init__(self):
+          self.conn = sqlite3.connect(":memory:")
+          self.conn.row_factory = sqlite3.Row
+          self._setup()
+
+      def _setup(self):
+          cur = self.conn.cursor()
+          cur.execute(
+              "CREATE TABLE invoices (invoice_id INTEGER, owner_id TEXT, amount INTEGER, status TEXT)"
+          )
+          rows = [
+              (101, "u-100", 1200, "paid"),
+              (102, "u-200", 4300, "open"),
+              (103, "u-100", 800, "open"),
+          ]
+          cur.executemany("INSERT INTO invoices VALUES (?, ?, ?, ?)", rows)
+          self.conn.commit()
+
+      def get_invoice(self, current_user_id: str, invoice_id: int) -> Dict:
+          row = self.conn.execute(
+              "SELECT invoice_id, owner_id, amount, status FROM invoices WHERE invoice_id = ?",
+              (invoice_id,),
+          ).fetchone()
+          if row is None:
+              raise ValueError("not found")
+          if row["owner_id"] != current_user_id:
+              raise PermissionError("forbidden")
+          return {
+              "viewer": current_user_id,
+              "invoice_id": row["invoice_id"],
+              "owner_id": row["owner_id"],
+              "amount": row["amount"],
+              "status": row["status"],
+          }
+
+      def summarize(self, current_user_id: str, invoice_id: int) -> Dict:
+          invoice = self.get_invoice(current_user_id, invoice_id)
+          return {
+              "requester": current_user_id,
+              "invoice": invoice,
+          }
+
+  def view_invoice(user_id: str, invoice_id: int) -> Dict:
+      app = KiteLedger()
+      return app.summarize(user_id, invoice_id)
+
+  if __name__ == "__main__":
+      print(view_invoice("u-100", 101))
+
+test_cases:
+  - id: tc-001
+    description: "owner_id とログインユーザーを照合していること"
+    type: code_contains
+    required: "owner_id\" != current_user_id"
+    expect: pass
+  - id: tc-002
+    description: "権限違反時に PermissionError を投げていること"
+    type: code_contains
+    required: "PermissionError"
+    expect: pass
+  - id: tc-003
+    description: "owner_id と current_user_id の比較式が存在すること"
+    type: code_contains
+    required: "row[\"owner_id\"] != current_user_id"
+    expect: pass
+
+correct_concepts:
+  - "取得したレコードの owner_id とログイン中ユーザーを照合している"
+  - "IDだけで権限を判断していない"
+  - "存在確認（not found）と認可確認（forbidden）を別々に行っている"
+
+hint:
+  level1: "請求書IDが見つかった後、そのままデータを返していませんか？"
+  level2: "取得できることと見せてよいことは別の条件です。"
+  level3: "row['owner_id'] != current_user_id のとき PermissionError('forbidden') を投げます。"
+
+explanation: |
+  この脆弱性は「IDOR（Insecure Direct Object Reference）」です。
+
+  問題のコード:
+    if row is None:
+        raise ValueError("not found")
+    return { ... }  # ← owner_id の確認なしで返している
+
+  invoice_id=102 は u-200 の請求書ですが、u-100 でリクエストしても返ってしまいます。
+  IDを知っていれば誰でも他人のデータにアクセスできる状態です。
+
+  修正方法:
+    if row["owner_id"] != current_user_id:
+        raise PermissionError("forbidden")
+
+  存在確認（not found）の後に認可確認（forbidden）を加えるだけで防げます。
+  「見つかること」と「見せてよいこと」は別の条件として扱いましょう。

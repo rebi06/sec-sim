@@ -1,0 +1,145 @@
+id: xss-comment-002
+title: "コメントの見た目が壊れるプレビュー"
+category: "XSS"
+difficulty: easy
+service_name: "MiraNotes"
+description: |
+  MiraNotes は社内メモにコメントを付けられるサービスです。
+  プレイヤーは、コメント一覧のプレビュー画面を守ります。
+  AI はコメント欄に入った文字列を悪用して、表示内容を勝手に変えようとしています。
+  対象はコメントのHTML出力だけです。
+
+vulnerable_code: |
+  import html
+  from dataclasses import dataclass
+  from typing import List, Dict
+
+  @dataclass
+  class Comment:
+      comment_id: int
+      author: str
+      body: str
+
+  class MiraNotes:
+      def __init__(self):
+          self.comments = [
+              Comment(1, "Aki", "Thanks for the update"),
+              Comment(2, "Rin", "Please review the draft"),
+              Comment(3, "Mika", "Looks good to me"),
+          ]
+
+      def add_comment(self, author: str, body: str) -> None:
+          next_id = len(self.comments) + 1
+          self.comments.append(Comment(next_id, author, body))
+
+      def build_preview(self) -> str:
+          parts = ["<div class='thread'>"]
+          for c in self.comments:
+              parts.append(f"<div class='item'><b>{c.author}</b>: {c.body}</div>")
+          parts.append("</div>")
+          return "\n".join(parts)
+
+      def render_page(self, incoming_author: str, incoming_body: str) -> Dict[str, str]:
+          self.add_comment(incoming_author, incoming_body)
+          preview_html = self.build_preview()
+          return {
+              "title": "Comment Preview",
+              "html": preview_html,
+          }
+
+  def make_preview(author: str, body: str) -> Dict[str, str]:
+      app = MiraNotes()
+      return app.render_page(author, body)
+
+  if __name__ == "__main__":
+      print(make_preview("Yui", "Hello team"))
+
+fixed_code: |
+  import html
+  from dataclasses import dataclass
+  from typing import List, Dict
+
+  @dataclass
+  class Comment:
+      comment_id: int
+      author: str
+      body: str
+
+  class MiraNotes:
+      def __init__(self):
+          self.comments = [
+              Comment(1, "Aki", "Thanks for the update"),
+              Comment(2, "Rin", "Please review the draft"),
+              Comment(3, "Mika", "Looks good to me"),
+          ]
+
+      def add_comment(self, author: str, body: str) -> None:
+          next_id = len(self.comments) + 1
+          self.comments.append(Comment(next_id, author, body))
+
+      def build_preview(self) -> str:
+          parts = ["<div class='thread'>"]
+          for c in self.comments:
+              safe_author = html.escape(c.author, quote=True)
+              safe_body = html.escape(c.body, quote=True)
+              parts.append(f"<div class='item'><b>{safe_author}</b>: {safe_body}</div>")
+          parts.append("</div>")
+          return "\n".join(parts)
+
+      def render_page(self, incoming_author: str, incoming_body: str) -> Dict[str, str]:
+          self.add_comment(incoming_author, incoming_body)
+          preview_html = self.build_preview()
+          return {
+              "title": "Comment Preview",
+              "html": preview_html,
+          }
+
+  def make_preview(author: str, body: str) -> Dict[str, str]:
+      app = MiraNotes()
+      return app.render_page(author, body)
+
+  if __name__ == "__main__":
+      print(make_preview("Yui", "Hello team"))
+
+test_cases:
+  - id: tc-001
+    description: "html.escape でエスケープしていること"
+    type: code_contains
+    required: "html.escape"
+    expect: pass
+  - id: tc-002
+    description: "author をそのままHTMLへ埋め込んでいないこと"
+    type: code_not_contains
+    forbidden: "<b>{c.author}</b>"
+    expect: blocked
+  - id: tc-003
+    description: "body をそのままHTMLへ埋め込んでいないこと"
+    type: code_not_contains
+    forbidden: "{c.body}</div>"
+    expect: blocked
+
+correct_concepts:
+  - "出力時にhtml.escapeでエスケープしている"
+  - "ユーザー入力をそのままHTMLへ連結していない"
+  - "authorとbodyの両方をエスケープしている"
+
+hint:
+  level1: "コメント本文がHTMLにそのまま埋め込まれている箇所を探してください。"
+  level2: "表示前に特殊文字を無害化する必要があります。"
+  level3: "html.escape(c.author, quote=True) と html.escape(c.body, quote=True) で両方を処理します。"
+
+explanation: |
+  この脆弱性は、コメント本文をそのままHTMLへ埋め込んでいることが原因です。
+
+  問題のコード:
+    parts.append(f"<div class='item'><b>{c.author}</b>: {c.body}</div>")
+
+  author や body に "<script>alert(1)</script>" のような文字列が入ると、
+  HTMLの構造そのものに影響を与えてしまいます。
+
+  修正方法:
+    safe_author = html.escape(c.author, quote=True)
+    safe_body   = html.escape(c.body,   quote=True)
+
+  html.escape は < > & " ' を文字参照に変換するため、
+  入力がHTML命令として解釈されなくなります。
