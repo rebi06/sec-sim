@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
@@ -34,4 +34,5 @@ class EventResponse(BaseModel):
     event_type: str
     actor: str
     payload: dict[str, Any]
+    correlation_id: Optional[str] = None
     created_at: str

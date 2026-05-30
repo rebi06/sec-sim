@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Iterator, Optional
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, create_engine, select
@@ -54,7 +54,7 @@ class GameSessionModel(Base):
     winner: Mapped[str] = mapped_column(String(20), nullable=False, default='none')
     status_flags: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     events: Mapped[list['GameEventModel']] = relationship(back_populates='game', cascade='all, delete-orphan')
 
@@ -68,8 +68,8 @@ class GameEventModel(Base):
     event_type: Mapped[str] = mapped_column(String(60), nullable=False)
     actor: Mapped[str] = mapped_column(String(20), nullable=False)
     payload: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
-    correlation_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    causation_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    correlation_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    causation_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     game: Mapped[GameSessionModel] = relationship(back_populates='events')
