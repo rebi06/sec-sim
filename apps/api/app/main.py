@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.games import router as games_router
+from app.api.routes.scenarios import router as scenarios_router
 from app.infrastructure.db import init_db
 
 
@@ -26,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(games_router)
+app.include_router(scenarios_router)
 
 
 @app.get('/health')

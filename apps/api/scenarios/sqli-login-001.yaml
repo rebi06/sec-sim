@@ -1,0 +1,106 @@
+id: sqli-login-001
+title: "ログイン機能への SQL インジェクション"
+category: "SQL Injection"
+difficulty: hard
+service_name: "ShopX"
+description: |
+  架空のECサイト「ShopX」のログイン機能に対して、AIが認証バイパス攻撃を仕掛けています。
+  バックエンドのログイン処理コードを確認し、脆弱性を修正してください。
+
+vulnerable_code: |
+  import sqlite3
+
+  DB_PATH = "shopx.db"
+
+  def get_connection():
+      return sqlite3.connect(DB_PATH)
+
+  def login(username: str, password: str) -> bool:
+      conn = get_connection()
+      cursor = conn.cursor()
+      query = (
+          "SELECT * FROM users"
+          " WHERE username='" + username +
+          "' AND password='" + password + "'"
+      )
+      cursor.execute(query)
+      row = cursor.fetchone()
+      conn.close()
+      return row is not None
+
+  def handle_login_request(form_data: dict) -> dict:
+      username = form_data.get("username", "")
+      password = form_data.get("password", "")
+      if login(username, password):
+          return {"status": "ok", "message": "ログイン成功"}
+      return {"status": "error", "message": "認証失敗"}
+
+fixed_code: |
+  import sqlite3
+
+  DB_PATH = "shopx.db"
+
+  def get_connection():
+      return sqlite3.connect(DB_PATH)
+
+  def login(username: str, password: str) -> bool:
+      conn = get_connection()
+      cursor = conn.cursor()
+      query = "SELECT * FROM users WHERE username=? AND password=?"
+      cursor.execute(query, (username, password))
+      row = cursor.fetchone()
+      conn.close()
+      return row is not None
+
+  def handle_login_request(form_data: dict) -> dict:
+      username = form_data.get("username", "")
+      password = form_data.get("password", "")
+      if login(username, password):
+          return {"status": "ok", "message": "ログイン成功"}
+      return {"status": "error", "message": "認証失敗"}
+
+test_cases:
+  - id: tc-001
+    description: "文字列結合でSQLを構築していないこと"
+    type: code_not_contains
+    forbidden: "+ username +"
+    expect: blocked
+  - id: tc-002
+    description: "文字列結合でSQLを構築していないこと（別パターン）"
+    type: code_not_contains
+    forbidden: "username +\""
+    expect: blocked
+  - id: tc-003
+    description: "プレースホルダー（?）を使っていること"
+    type: code_contains
+    required: "?"
+    expect: pass
+  - id: tc-004
+    description: "execute()にパラメータタプルを渡していること"
+    type: code_contains
+    required: "execute(query,"
+    expect: pass
+
+correct_concepts:
+  - "プリペアドステートメント（プレースホルダー）を使っている"
+  - "ユーザー入力をSQL文字列に直接結合していない"
+  - "cursor.execute() の第2引数にパラメータを渡している"
+
+hint:
+  level1: "SQL文の組み立て方に問題があります。username と password の扱いを確認してください。"
+  level2: "文字列結合でSQLを作ると、入力値がSQL命令として解釈されます。プレースホルダー（?）を使った書き方に変えてみてください。"
+  level3: "cursor.execute(query, (username, password)) の形式に変え、queryの中は ? を使ってください。"
+
+explanation: |
+  この脆弱性は「SQLインジェクション」です。
+
+  問題のコード:
+    query = "SELECT * FROM users WHERE username='" + username + "' AND password='" + password + "'"
+
+  username に「' OR 1=1 --」を入力すると、クエリが以下のように変化します:
+    SELECT * FROM users WHERE username='' OR 1=1 --' AND password='...'
+
+  「1=1」は常に真なので、パスワードなしで全ユーザーとしてログインできてしまいます。
+
+  修正方法: プレースホルダー（?）を使ったプリペアドステートメントに変える。
+  DBドライバーがパラメータを安全にエスケープするため、入力値がSQL命令として解釈されません。
